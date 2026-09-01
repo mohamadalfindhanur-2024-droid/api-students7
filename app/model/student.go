@@ -1,8 +1,8 @@
-package main
+package model
 
 import "time"
 
-// Student entitas utama mahasiswa
+// Student merepresentasikan entitas mahasiswa pada tabel students
 type Student struct {
 	ID        int       `json:"id"`
 	NIM       string    `json:"nim"`
@@ -12,14 +12,15 @@ type Student struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// CreateStudentRequest untuk POST (semua field wajib ada)
+// CreateStudentRequest untuk validasi request body POST
 type CreateStudentRequest struct {
-	NIM   string  `json:"nim"`
-	Name  string  `json:"name"`
-	Grade float64 `json:"grade"`
+	NIM      string  `json:"nim"`
+	Name     string  `json:"name"`
+	Grade    float64 `json:"grade"`
+	IsActive *bool   `json:"is_active"`
 }
 
-// ReplaceStudentRequest untuk PUT (ganti seluruh data, semua wajib)
+// ReplaceStudentRequest untuk PUT (seluruh field wajib ada)
 type ReplaceStudentRequest struct {
 	NIM      string  `json:"nim"`
 	Name     string  `json:"name"`
@@ -27,7 +28,7 @@ type ReplaceStudentRequest struct {
 	IsActive bool    `json:"is_active"`
 }
 
-// PatchStudentRequest untuk PATCH (ubah sebagian, pakai pointer agar bisa tahu field yang tidak dikirim)
+// PatchStudentRequest untuk PATCH (menggunakan pointer agar tahu field mana yang dikirim)
 type PatchStudentRequest struct {
 	NIM      *string  `json:"nim,omitempty"`
 	Name     *string  `json:"name,omitempty"`
@@ -35,7 +36,7 @@ type PatchStudentRequest struct {
 	IsActive *bool    `json:"is_active,omitempty"`
 }
 
-// WebResponse amplop baku untuk semua respons JSON
+// WebResponse adalah format baku seluruh respons API
 type WebResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
@@ -44,7 +45,6 @@ type WebResponse struct {
 	Errors  any    `json:"errors,omitempty"`
 }
 
-// Meta informasi paginasi
 type Meta struct {
 	Page       int `json:"page"`
 	Limit      int `json:"limit"`
@@ -52,7 +52,6 @@ type Meta struct {
 	TotalPages int `json:"total_pages"`
 }
 
-// ListQuery menampung parameter query string
 type ListQuery struct {
 	Page     int
 	Limit    int
@@ -60,4 +59,9 @@ type ListQuery struct {
 	Sort     string
 	Order    string
 	IsActive *bool
+}
+
+// Offset menghitung baris yang dilewati untuk paginasi SQL
+func (q ListQuery) Offset() int {
+	return (q.Page - 1) * q.Limit
 }
