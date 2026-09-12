@@ -16,6 +16,10 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Reports
+*.docx
+*.pdf
+
 # IDE/editor directories
 .vscode/
 .idea/

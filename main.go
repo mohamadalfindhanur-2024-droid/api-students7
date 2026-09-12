@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -12,11 +12,23 @@ import (
 	"api-students/app/service"
 	"api-students/config"
 	"api-students/database"
+	"api-students/helper"
+	"api-students/route"
 )
+
+const minSecretLength = 32
 
 func main() {
 	config.LoadEnv()
 	logger := config.NewLogger()
+
+	// Validasi JWT_SECRET sebelum server menyala
+	jwtSecret := config.GetEnv("JWT_SECRET", "")
+	if len(jwtSecret) < minSecretLength {
+		logger.Error("JWT_SECRET tidak diisi atau terlalu pendek",
+			slog.Int("minimal_karakter", minSecretLength))
+		os.Exit(1)
+	}
 
 	pool, err := database.NewPool(context.Background())
 	if err != nil {
@@ -25,10 +37,33 @@ func main() {
 	}
 	defer pool.Close()
 
-	studentRepository := repository.NewStudentRepository(pool)
-	studentService := service.NewStudentService(studentRepository)
+	jwtAccessTTL := time.Duration(config.GetEnvInt("JWT_ACCESS_TTL_MINUTES", 15)) * time.Minute
+	jwtRefreshTTL := time.Duration(config.GetEnvInt("JWT_REFRESH_TTL_DAYS", 7)) * 24 * time.Hour
 
-	app := config.NewApp(logger, pool, studentService)
+	jwtManager := helper.NewJWTManager(
+		jwtSecret,
+		config.GetEnv("JWT_ISSUER", "praktikum-backend"),
+		jwtAccessTTL,
+	)
+
+	studentRepository := repository.NewStudentRepository(pool)
+	userRepository := repository.NewUserRepository(pool)
+	tokenRepository := repository.NewTokenRepository(pool)
+
+	studentService := service.NewStudentService(studentRepository)
+	authService := service.NewAuthService(
+		userRepository, tokenRepository, jwtManager, jwtRefreshTTL,
+	)
+
+	deps := route.Dependencies{
+		Pool:           pool,
+		JWT:            jwtManager,
+		StudentService: studentService,
+		AuthService:    authService,
+	}
+
+	allowedOrigins := config.GetEnv("ALLOWED_ORIGINS", "http://localhost:5173")
+	app := config.NewApp(logger, deps, allowedOrigins)
 
 	port := config.GetEnv("APP_PORT", "3000")
 	go func() {

@@ -1,28 +1,28 @@
-package config
+﻿package config
 
 import (
 	"log/slog"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"api-students/app/service"
 	"api-students/helper"
 	"api-students/middleware"
 	"api-students/route"
 )
 
 func NewApp(
-	logger *slog.Logger, pool *pgxpool.Pool, studentService *service.StudentService,
+	logger *slog.Logger, deps route.Dependencies, allowedOrigins string,
 ) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:      GetEnv("APP_NAME", "Praktikum Backend Lanjut"),
 		ErrorHandler: newErrorHandler(logger),
+		// Membatasi ukuran body maksimal 1 MB untuk mencegah Denial of Service
+		BodyLimit: 1 * 1024 * 1024,
 	})
 
-	middleware.Register(app, logger)
-	route.Register(app, pool, studentService)
+	middleware.Register(app, logger, allowedOrigins)
+	route.Register(app, deps)
 
-	// Penampung terakhir untuk URL yang tidak dikenal.
+	// Penampung terakhir untuk URL yang tidak dikenal
 	app.Use(func(c *fiber.Ctx) error {
 		return helper.Fail(c, fiber.StatusNotFound, "endpoint tidak ditemukan")
 	})
