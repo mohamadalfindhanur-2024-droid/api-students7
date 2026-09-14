@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -11,13 +12,11 @@ import (
 	"api-students/app/model"
 )
 
-// Sentinel error milik lapisan repository
 var (
 	ErrNotFound  = errors.New("data tidak ditemukan")
 	ErrDuplicate = errors.New("nim sudah terdaftar")
 )
 
-// StudentRepository adalah kontrak penyimpanan data student
 type StudentRepository interface {
 	FindAll(ctx context.Context, q model.ListQuery) ([]model.Student, int, error)
 	FindByID(ctx context.Context, id int) (model.Student, error)
@@ -26,7 +25,6 @@ type StudentRepository interface {
 	Delete(ctx context.Context, id int) error
 }
 
-// Daftar putih kolom pengurutan untuk mencegah SQL Injection
 var kolomUrut = map[string]string{
 	"id":         "id",
 	"nim":        "nim",
@@ -43,147 +41,159 @@ func NewStudentRepository(pool *pgxpool.Pool) StudentRepository {
 	return &studentPostgresRepository{pool: pool}
 }
 
-// buildFilter menyusun klausul WHERE secara dinamis dan aman dengan parameter
-func buildFilter(q model.ListQuery) (string, []any) {
-	where := " WHERE 1=1"
-	args := []any{}
-
-	if q.Search != "" {
-		where += fmt.Sprintf(" AND name ILIKE $%d", len(args)+1)
-		args = append(args, "%"+q.Search+"%")
+func (r *studentPostgresRepository) FindAll(
+	ctx context.Context, q model.ListQuery,
+) ([]model.Student, int, error) {
+	kolom := "id"
+	if k, ok := kolomUrut[q.Sort]; ok {
+		kolom = k
 	}
 
-	if q.IsActive != nil {
-		where += fmt.Sprintf(" AND is_active = $%d", len(args)+1)
-		args = append(args, *q.IsActive)
-	}
-
-	return where, args
-}
-
-func (r *studentPostgresRepository) FindAll(ctx context.Context, q model.ListQuery) ([]model.Student, int, error) {
-	where, args := buildFilter(q)
-
-	// 1. Hitung total data sesuai filter
-	var total int
-	countQuery := "SELECT COUNT(*) FROM students" + where
-	err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("menghitung total mahasiswa: %w", err)
-	}
-
-	// 2. Tentukan arah dan kolom pengurutan
 	arah := "ASC"
-	if q.Order == "desc" {
+	if strings.ToUpper(q.Order) == "DESC" {
 		arah = "DESC"
 	}
 
-	kolom, ok := kolomUrut[q.Sort]
-	if !ok {
-		kolom = "id"
+	offset := (q.Page - 1) * q.Limit
+
+	var conditions []string
+	var args []any
+	argIdx := 1
+
+	if q.Search != "" {
+		conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR nim ILIKE $%d)", argIdx, argIdx))
+		args = append(args, "%"+q.Search+"%")
+		argIdx++
 	}
 
-	// 3. Ambil data dengan LIMIT dan OFFSET
-	sqlText := fmt.Sprintf(`
-		SELECT id, nim, name, grade, is_active, created_at 
-		FROM students%s 
-		ORDER BY %s %s 
-		LIMIT $%d OFFSET $%d`,
-		where, kolom, arah, len(args)+1, len(args)+2,
+	if q.IsActive != nil {
+		conditions = append(conditions, fmt.Sprintf("is_active = $%d", argIdx))
+		args = append(args, *q.IsActive)
+		argIdx++
+	}
+
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM students %s", whereClause)
+	var total int
+	if err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("menghitung total data: %w", err)
+	}
+
+	posisiLimit := len(args) + 1
+	posisiOffset := len(args) + 2
+	dataQuery := fmt.Sprintf(
+		"SELECT id, nim, name, grade, is_active, COALESCE(owner_id, 0), created_at, updated_at FROM students %s ORDER BY %s %s LIMIT $%d OFFSET $%d",
+		whereClause, kolom, arah, posisiLimit, posisiOffset,
 	)
 
-	args = append(args, q.Limit, q.Offset())
+	args = append(args, q.Limit, offset)
 
-	rows, err := r.pool.Query(ctx, sqlText, args...)
+	rows, err := r.pool.Query(ctx, dataQuery, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("mengambil daftar mahasiswa: %w", err)
+		return nil, 0, fmt.Errorf("mengambil data: %w", err)
 	}
 	defer rows.Close()
 
-	hasil := []model.Student{}
+	var students []model.Student
 	for rows.Next() {
 		var s model.Student
-		if err := rows.Scan(&s.ID, &s.NIM, &s.Name, &s.Grade, &s.IsActive, &s.CreatedAt); err != nil {
-			return nil, 0, fmt.Errorf("membaca baris mahasiswa: %w", err)
+		if err := rows.Scan(&s.ID, &s.NIM, &s.Name, &s.Grade, &s.IsActive, &s.OwnerID, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, 0, fmt.Errorf("membaca baris data: %w", err)
 		}
-		hasil = append(hasil, s)
+		students = append(students, s)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("membaca hasil query: %w", err)
+		return nil, 0, fmt.Errorf("iterasi data: %w", err)
 	}
 
-	return hasil, total, nil
+	return students, total, nil
 }
 
-func (r *studentPostgresRepository) FindByID(ctx context.Context, id int) (model.Student, error) {
+func (r *studentPostgresRepository) FindByID(
+	ctx context.Context, id int,
+) (model.Student, error) {
+	query := "SELECT id, nim, name, grade, is_active, COALESCE(owner_id, 0), created_at, updated_at FROM students WHERE id = $1"
+
 	var s model.Student
-	query := "SELECT id, nim, name, grade, is_active, created_at FROM students WHERE id = $1"
-	err := r.pool.QueryRow(ctx, query, id).Scan(&s.ID, &s.NIM, &s.Name, &s.Grade, &s.IsActive, &s.CreatedAt)
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&s.ID, &s.NIM, &s.Name, &s.Grade, &s.IsActive, &s.OwnerID, &s.CreatedAt, &s.UpdatedAt,
+	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.Student{}, ErrNotFound
 		}
-		return model.Student{}, fmt.Errorf("mengambil data mahasiswa: %w", err)
+		return model.Student{}, fmt.Errorf("mengambil student by id: %w", err)
 	}
+
 	return s, nil
 }
 
-func (r *studentPostgresRepository) Create(ctx context.Context, s model.Student) (model.Student, error) {
+func (r *studentPostgresRepository) Create(
+	ctx context.Context, s model.Student,
+) (model.Student, error) {
 	query := `
-		INSERT INTO students (nim, name, grade, is_active) 
-		VALUES ($1, $2, $3, $4) 
-		RETURNING id, created_at`
-	
-	err := r.pool.QueryRow(ctx, query, s.NIM, s.Name, s.Grade, s.IsActive).Scan(&s.ID, &s.CreatedAt)
+		INSERT INTO students (nim, name, grade, is_active, owner_id)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, nim, name, grade, is_active, COALESCE(owner_id, 0), created_at, updated_at
+	`
+
+	err := r.pool.QueryRow(ctx, query, s.NIM, s.Name, s.Grade, s.IsActive, s.OwnerID).Scan(
+		&s.ID, &s.NIM, &s.Name, &s.Grade, &s.IsActive, &s.OwnerID, &s.CreatedAt, &s.UpdatedAt,
+	)
 	if err != nil {
-		if isUniqueViolation(err) {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return model.Student{}, ErrDuplicate
 		}
-		return model.Student{}, fmt.Errorf("menyimpan data mahasiswa: %w", err)
+		return model.Student{}, fmt.Errorf("menyimpan student: %w", err)
 	}
+
 	return s, nil
 }
 
-func (r *studentPostgresRepository) Update(ctx context.Context, s model.Student) (model.Student, error) {
+func (r *studentPostgresRepository) Update(
+	ctx context.Context, s model.Student,
+) (model.Student, error) {
 	query := `
-		UPDATE students 
-		SET nim = $1, name = $2, grade = $3, is_active = $4 
-		WHERE id = $5 
-		RETURNING id, nim, name, grade, is_active, created_at`
+		UPDATE students
+		SET nim = $1, name = $2, grade = $3, is_active = $4, updated_at = NOW()
+		WHERE id = $5
+		RETURNING id, nim, name, grade, is_active, COALESCE(owner_id, 0), created_at, updated_at
+	`
 
-	err := r.pool.QueryRow(ctx, query, s.NIM, s.Name, s.Grade, s.IsActive, s.ID).
-		Scan(&s.ID, &s.NIM, &s.Name, &s.Grade, &s.IsActive, &s.CreatedAt)
+	err := r.pool.QueryRow(ctx, query, s.NIM, s.Name, s.Grade, s.IsActive, s.ID).Scan(
+		&s.ID, &s.NIM, &s.Name, &s.Grade, &s.IsActive, &s.OwnerID, &s.CreatedAt, &s.UpdatedAt,
+	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.Student{}, ErrNotFound
 		}
-		if isUniqueViolation(err) {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return model.Student{}, ErrDuplicate
 		}
-		return model.Student{}, fmt.Errorf("memperbarui data mahasiswa: %w", err)
+		return model.Student{}, fmt.Errorf("memperbarui student: %w", err)
 	}
+
 	return s, nil
 }
 
-func (r *studentPostgresRepository) Delete(ctx context.Context, id int) error {
-	query := "DELETE FROM students WHERE id = $1"
-	tag, err := r.pool.Exec(ctx, query, id)
+func (r *studentPostgresRepository) Delete(
+	ctx context.Context, id int,
+) error {
+	cmdTag, err := r.pool.Exec(ctx, "DELETE FROM students WHERE id = $1", id)
 	if err != nil {
-		return fmt.Errorf("menghapus data mahasiswa: %w", err)
+		return fmt.Errorf("menghapus student: %w", err)
 	}
 
-	if tag.RowsAffected() == 0 {
+	if cmdTag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
-}
 
-// isUniqueViolation memeriksa error kode 23505 (pelanggaran UNIQUE di PostgreSQL)
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23505"
-	} 
-	return false
+	return nil
 }
