@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"context"
@@ -22,7 +22,6 @@ func main() {
 	config.LoadEnv()
 	logger := config.NewLogger()
 
-	// Validasi JWT_SECRET sebelum server menyala
 	jwtSecret := config.GetEnv("JWT_SECRET", "")
 	if len(jwtSecret) < minSecretLength {
 		logger.Error("JWT_SECRET tidak diisi atau terlalu pendek",
@@ -49,15 +48,27 @@ func main() {
 	studentRepository := repository.NewStudentRepository(pool)
 	userRepository := repository.NewUserRepository(pool)
 	tokenRepository := repository.NewTokenRepository(pool)
+	roleRepository := repository.NewRoleRepository(pool)
 
-	studentService := service.NewStudentService(studentRepository)
+	// Pemetaan role ke permission dibaca SEKALI saat aplikasi menyala (Fail Closed)
+	rawPermissions, err := roleRepository.LoadPermissions(context.Background())
+	if err != nil {
+		logger.Error("gagal memuat permission dari database", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	permissions := helper.NewPermissionSet(rawPermissions)
+	logger.Info("permission dimuat", slog.Any("roles", permissions.KnownRoles()))
+
+	studentService := service.NewStudentService(studentRepository, permissions)
 	authService := service.NewAuthService(
-		userRepository, tokenRepository, jwtManager, jwtRefreshTTL,
+		userRepository, tokenRepository, jwtManager, permissions, jwtRefreshTTL,
 	)
 
 	deps := route.Dependencies{
 		Pool:           pool,
 		JWT:            jwtManager,
+		Permissions:    permissions,
 		StudentService: studentService,
 		AuthService:    authService,
 	}

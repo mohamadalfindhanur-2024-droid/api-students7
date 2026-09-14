@@ -1,4 +1,4 @@
-﻿package route
+package route
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 type Dependencies struct {
 	Pool           *pgxpool.Pool
 	JWT            *helper.JWTManager
+	Permissions    *helper.PermissionSet
 	StudentService *service.StudentService
 	AuthService    *service.AuthService
 }
@@ -33,15 +34,32 @@ func Register(app *fiber.App, deps Dependencies) {
 	auth.Post("/logout", deps.AuthService.Logout)
 	auth.Get("/me", middleware.RequireAuth(deps.JWT), deps.AuthService.Me)
 
-	// --- Endpoint Terlindungi: Wajib Membawa Access Token ---
+	// --- Endpoint Terlindungi: Wajib Login & RBAC Terkontrol ---
 	students := api.Group("/students",
-		middleware.RequireJSON, middleware.RequireAuth(deps.JWT))
-	students.Get("/", deps.StudentService.List)
+		middleware.RequireJSON,
+		middleware.RequireAuth(deps.JWT),
+	)
+
+	perms := deps.Permissions
+
+	// Hak akses diputuskan di Middleware (Route level - tidak perlu tahu isi data)
+	students.Get("/",
+		middleware.RequirePermission(perms, "student:list"),
+		deps.StudentService.List,
+	)
+	students.Post("/",
+		middleware.RequirePermission(perms, "student:create"),
+		deps.StudentService.Create,
+	)
+	students.Delete("/:id",
+		middleware.RequirePermission(perms, "student:delete"),
+		deps.StudentService.Delete,
+	)
+
+	// Hak akses bergantung pada Kepemilikan Data (Ownership) -> Diperiksa di Service layer
 	students.Get("/:id", deps.StudentService.Get)
-	students.Post("/", deps.StudentService.Create)
 	students.Put("/:id", deps.StudentService.Replace)
 	students.Patch("/:id", deps.StudentService.Patch)
-	students.Delete("/:id", deps.StudentService.Delete)
 }
 
 func healthCheck(pool *pgxpool.Pool) fiber.Handler {
