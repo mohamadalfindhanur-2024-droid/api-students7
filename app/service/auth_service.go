@@ -19,6 +19,7 @@ type AuthService struct {
 	users      repository.UserRepository
 	tokens     repository.TokenRepository
 	jwt        *helper.JWTManager
+	perms      *helper.PermissionSet
 	refreshTTL time.Duration
 }
 
@@ -26,12 +27,14 @@ func NewAuthService(
 	users repository.UserRepository,
 	tokens repository.TokenRepository,
 	jwtManager *helper.JWTManager,
+	perms *helper.PermissionSet,
 	refreshTTL time.Duration,
 ) *AuthService {
 	return &AuthService{
 		users:      users,
 		tokens:     tokens,
 		jwt:        jwtManager,
+		perms:      perms,
 		refreshTTL: refreshTTL,
 	}
 }
@@ -52,13 +55,11 @@ func (s *AuthService) Register(c *fiber.Ctx) error {
 		return helper.FailValidation(c, errs)
 	}
 
-	// Password di-hash sebelum disimpan ke database
 	hashed, err := helper.HashPassword(req.Password)
 	if err != nil {
 		return helper.Fail(c, fiber.StatusInternalServerError, "gagal memproses password")
 	}
 
-	// Role selalu ditentukan server ("user"), tidak pernah diambil dari request
 	created, err := s.users.Create(ctx, model.User{
 		Username: req.Username,
 		Email:    req.Email,
@@ -92,7 +93,6 @@ func (s *AuthService) Login(c *fiber.Ctx) error {
 
 	user, err := s.users.FindByUsername(ctx, strings.TrimSpace(req.Username))
 	if err != nil {
-		// Username tidak ditemukan: tetap jalankan dummy hash agar waktu respon sama (mencegah timing attack)
 		helper.VerifyDummyPassword(req.Password)
 		return helper.Fail(c, fiber.StatusUnauthorized, "username atau password salah")
 	}
@@ -138,7 +138,6 @@ func (s *AuthService) Refresh(c *fiber.Ctx) error {
 		return helper.Fail(c, fiber.StatusUnauthorized, "akun tidak dapat dipakai")
 	}
 
-	// ROTASI: Token lama langsung dicabut dan diganti yang baru
 	if err := s.tokens.Revoke(ctx, hash); err != nil {
 		return helper.Fail(c, fiber.StatusInternalServerError, "gagal memperbarui token")
 	}
@@ -181,7 +180,10 @@ func (s *AuthService) Me(c *fiber.Ctx) error {
 		return helper.Fail(c, fiber.StatusUnauthorized, "user tidak ditemukan")
 	}
 
-	return helper.Success(c, fiber.StatusOK, "profil berhasil diambil", user)
+	return helper.Success(c, fiber.StatusOK, "profil berhasil diambil", fiber.Map{
+		"user":        user,
+		"permissions": s.perms.PermissionsOf(user.Role),
+	})
 }
 
 func (s *AuthService) issueTokenPair(
