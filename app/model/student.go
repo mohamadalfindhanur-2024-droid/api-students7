@@ -8,14 +8,15 @@ type Student struct {
 	Name      string    `json:"name"`
 	Grade     float64   `json:"grade"`
 	IsActive  bool      `json:"is_active"`
+	OwnerID   int       `json:"owner_id"`
 	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type CreateStudentRequest struct {
-	NIM      string  `json:"nim"`
-	Name     string  `json:"name"`
-	Grade    float64 `json:"grade"`
-	IsActive *bool   `json:"is_active"`
+	NIM   string  `json:"nim"`
+	Name  string  `json:"name"`
+	Grade float64 `json:"grade"`
 }
 
 type ReplaceStudentRequest struct {
@@ -26,25 +27,10 @@ type ReplaceStudentRequest struct {
 }
 
 type PatchStudentRequest struct {
-	NIM      *string  `json:"nim,omitempty"`
-	Name     *string  `json:"name,omitempty"`
-	Grade    *float64 `json:"grade,omitempty"`
-	IsActive *bool    `json:"is_active,omitempty"`
-}
-
-type WebResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
-	Meta    *Meta  `json:"meta,omitempty"`
-	Errors  any    `json:"errors,omitempty"`
-}
-
-type Meta struct {
-	Page       int `json:"page"`
-	Limit      int `json:"limit"`
-	Total      int `json:"total"`
-	TotalPages int `json:"total_pages"`
+	NIM      *string  `json:"nim"`
+	Name     *string  `json:"name"`
+	Grade    *float64 `json:"grade"`
+	IsActive *bool    `json:"is_active"`
 }
 
 type ListQuery struct {
@@ -56,7 +42,17 @@ type ListQuery struct {
 	IsActive *bool
 }
 
-// Offset menghitung baris yang dilewati untuk paginasi SQL
-func (q ListQuery) Offset() int {
-	return (q.Page - 1) * q.Limit
+type WebResponse struct {
+	Success bool              `json:"success"`
+	Message string            `json:"message"`
+	Data    any               `json:"data,omitempty"`
+	Errors  map[string]string `json:"errors,omitempty"`
+	Meta    *Meta             `json:"meta,omitempty"`
+}
+
+type Meta struct {
+	CurrentPage int `json:"current_page"`
+	PerPage     int `json:"per_page"`
+	Total       int `json:"total"`
+	TotalPages  int `json:"total_pages"`
 }
