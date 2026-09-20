@@ -1,6 +1,4 @@
--- ---------------------------------------------------------------
 -- permissions untuk entity students (Modul 6 Tugas Mandiri C.1)
--- ---------------------------------------------------------------
 INSERT INTO permissions (name, description) VALUES
     ('student:list', 'Melihat daftar seluruh mahasiswa'),
     ('student:read:any', 'Melihat data mahasiswa milik siapa pun'),

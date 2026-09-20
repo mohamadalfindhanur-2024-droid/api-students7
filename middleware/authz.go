@@ -5,8 +5,6 @@ import (
 	"api-students/helper"
 )
 
-// RequirePermission menolak request jika role user tidak memiliki permission yang diminta.
-// Digunakan pada route level yang keputusannya tidak bergantung pada kepemilikan isi data.
 func RequirePermission(perms *helper.PermissionSet, permission string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		user, ok := helper.CurrentUser(c)

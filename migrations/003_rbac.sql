@@ -1,6 +1,4 @@
--- ---------------------------------------------------------------
 -- roles — daftar role yang diakui sistem
--- ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS roles (
     name VARCHAR(20) PRIMARY KEY,
     description VARCHAR(150) NOT NULL,
@@ -13,9 +11,7 @@ INSERT INTO roles (name, description) VALUES
     ('user', 'Hanya boleh mengelola datanya sendiri')
 ON CONFLICT (name) DO NOTHING;
 
--- ---------------------------------------------------------------
 -- permissions — daftar tindakan yang dapat diberikan kepada role
--- ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS permissions (
     name VARCHAR(50) PRIMARY KEY,
     description VARCHAR(150) NOT NULL
@@ -29,9 +25,7 @@ INSERT INTO permissions (name, description) VALUES
     ('role:assign', 'Mengubah role milik user lain')
 ON CONFLICT (name) DO NOTHING;
 
--- ---------------------------------------------------------------
 -- role_permissions — tabel penghubung, inti dari model RBAC
--- ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS role_permissions (
     role_name VARCHAR(20) NOT NULL REFERENCES roles(name) ON DELETE CASCADE,
     permission_name VARCHAR(50) NOT NULL REFERENCES permissions(name) ON DELETE CASCADE,
