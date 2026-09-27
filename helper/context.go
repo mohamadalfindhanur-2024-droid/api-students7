@@ -13,3 +13,11 @@ func CurrentUser(c *fiber.Ctx) (model.AuthUser, bool) {
 	user, ok := c.Locals(LocalsAuthUser).(model.AuthUser)
 	return user, ok
 }
+
+// RequestID mengambil request ID unik dari context Locals request.
+func RequestID(c *fiber.Ctx) string {
+	if reqID, ok := c.Locals("requestid").(string); ok && reqID != "" {
+		return reqID
+	}
+	return ""
+}

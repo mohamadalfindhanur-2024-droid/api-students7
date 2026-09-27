@@ -1,4 +1,4 @@
-package model
+﻿package model
 
 import "time"
 
@@ -14,23 +14,23 @@ type Student struct {
 }
 
 type CreateStudentRequest struct {
-	NIM   string  `json:"nim"`
-	Name  string  `json:"name"`
-	Grade float64 `json:"grade"`
+	NIM   string  `json:"nim" validate:"required,nim"`
+	Name  string  `json:"name" validate:"required,min=3,max=100"`
+	Grade float64 `json:"grade" validate:"min=0,max=4"`
 }
 
 type ReplaceStudentRequest struct {
-	NIM      string  `json:"nim"`
-	Name     string  `json:"name"`
-	Grade    float64 `json:"grade"`
+	NIM      string  `json:"nim" validate:"required,nim"`
+	Name     string  `json:"name" validate:"required,min=3,max=100"`
+	Grade    float64 `json:"grade" validate:"min=0,max=4"`
 	IsActive bool    `json:"is_active"`
 }
 
 type PatchStudentRequest struct {
-	NIM      *string  `json:"nim"`
-	Name     *string  `json:"name"`
-	Grade    *float64 `json:"grade"`
-	IsActive *bool    `json:"is_active"`
+	NIM      *string  `json:"nim,omitempty" validate:"omitnil,nim"`
+	Name     *string  `json:"name,omitempty" validate:"omitnil,min=3,max=100"`
+	Grade    *float64 `json:"grade,omitempty" validate:"omitnil,min=0,max=4"`
+	IsActive *bool    `json:"is_active,omitempty"`
 }
 
 type ListQuery struct {
@@ -40,19 +40,4 @@ type ListQuery struct {
 	Sort     string
 	Order    string
 	IsActive *bool
-}
-
-type WebResponse struct {
-	Success bool              `json:"success"`
-	Message string            `json:"message"`
-	Data    any               `json:"data,omitempty"`
-	Errors  map[string]string `json:"errors,omitempty"`
-	Meta    *Meta             `json:"meta,omitempty"`
-}
-
-type Meta struct {
-	CurrentPage int `json:"current_page"`
-	PerPage     int `json:"per_page"`
-	Total       int `json:"total"`
-	TotalPages  int `json:"total_pages"`
 }

@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -50,7 +50,6 @@ func main() {
 	tokenRepository := repository.NewTokenRepository(pool)
 	roleRepository := repository.NewRoleRepository(pool)
 
-	// Pemetaan role ke permission dibaca SEKALI saat aplikasi menyala (Fail Closed)
 	rawPermissions, err := roleRepository.LoadPermissions(context.Background())
 	if err != nil {
 		logger.Error("gagal memuat permission dari database", slog.String("error", err.Error()))
@@ -60,6 +59,7 @@ func main() {
 	permissions := helper.NewPermissionSet(rawPermissions)
 	logger.Info("permission dimuat", slog.Any("roles", permissions.KnownRoles()))
 
+	userService := service.NewUserService(userRepository, permissions)
 	studentService := service.NewStudentService(studentRepository, permissions)
 	authService := service.NewAuthService(
 		userRepository, tokenRepository, jwtManager, permissions, jwtRefreshTTL,
@@ -69,6 +69,7 @@ func main() {
 		Pool:           pool,
 		JWT:            jwtManager,
 		Permissions:    permissions,
+		UserService:    userService,
 		StudentService: studentService,
 		AuthService:    authService,
 	}

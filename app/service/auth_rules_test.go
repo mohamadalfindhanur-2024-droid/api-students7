@@ -4,51 +4,8 @@ import (
 	"testing"
 
 	"api-students/app/model"
-	"api-students/app/service"
+	"api-students/helper"
 )
-
-func TestCheckPasswordStrength(t *testing.T) {
-	tests := []struct {
-		name     string
-		password string
-		expected string
-	}{
-		{
-			name:     "Password terlalu pendek (< 8 karakter)",
-			password: "pass1",
-			expected: "minimal 8 karakter",
-		},
-		{
-			name:     "Password hanya berisi huruf tanpa angka",
-			password: "passwordrahasia",
-			expected: "harus memuat huruf dan angka",
-		},
-		{
-			name:     "Password hanya berisi angka tanpa huruf",
-			password: "1234567890",
-			expected: "harus memuat huruf dan angka",
-		},
-		{
-			name:     "Password terdaftar dalam kamus password lemah / umum",
-			password: "password1",
-			expected: "password terlalu umum",
-		},
-		{
-			name:     "Password kuat dan valid",
-			password: "rahasia123",
-			expected: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := service.CheckPasswordStrength(tt.password)
-			if result != tt.expected {
-				t.Errorf("CheckPasswordStrength(%q) = %q; expected %q", tt.password, result, tt.expected)
-			}
-		})
-	}
-}
 
 func TestValidateRegister(t *testing.T) {
 	tests := []struct {
@@ -62,7 +19,7 @@ func TestValidateRegister(t *testing.T) {
 			req: model.RegisterRequest{
 				Username: "mahasiswa1",
 				Email:    "mahasiswa1@example.com",
-				Password: "rahasia123",
+				Password: "Rahasia123!",
 			},
 			expectedErr: false,
 		},
@@ -71,7 +28,7 @@ func TestValidateRegister(t *testing.T) {
 			req: model.RegisterRequest{
 				Username: "ab",
 				Email:    "ab@example.com",
-				Password: "rahasia123",
+				Password: "Rahasia123!",
 			},
 			expectedErr: true,
 			errorField:  "username",
@@ -81,7 +38,7 @@ func TestValidateRegister(t *testing.T) {
 			req: model.RegisterRequest{
 				Username: "user_valid",
 				Email:    "bukan-email",
-				Password: "rahasia123",
+				Password: "Rahasia123!",
 			},
 			expectedErr: true,
 			errorField:  "email",
@@ -100,12 +57,12 @@ func TestValidateRegister(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			errs := service.ValidateRegister(tt.req)
+			errs := helper.ValidateStruct(tt.req)
 			if tt.expectedErr && len(errs) == 0 {
-				t.Errorf("ValidateRegister() expected error on field %s, got none", tt.errorField)
+				t.Errorf("ValidateStruct() expected error on field %s, got none", tt.errorField)
 			}
 			if !tt.expectedErr && len(errs) > 0 {
-				t.Errorf("ValidateRegister() expected no errors, got: %v", errs)
+				t.Errorf("ValidateStruct() expected no errors, got: %v", errs)
 			}
 		})
 	}
@@ -145,12 +102,12 @@ func TestValidateLogin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			errs := service.ValidateLogin(tt.req)
+			errs := helper.ValidateStruct(tt.req)
 			if tt.expectedErr && len(errs) == 0 {
-				t.Errorf("ValidateLogin() expected error, got none")
+				t.Errorf("ValidateStruct() expected error, got none")
 			}
 			if !tt.expectedErr && len(errs) > 0 {
-				t.Errorf("ValidateLogin() expected no error, got: %v", errs)
+				t.Errorf("ValidateStruct() expected no error, got: %v", errs)
 			}
 		})
 	}

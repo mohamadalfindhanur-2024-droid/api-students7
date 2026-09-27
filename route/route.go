@@ -1,4 +1,4 @@
-package route
+﻿package route
 
 import (
 	"context"
@@ -16,6 +16,7 @@ type Dependencies struct {
 	Pool           *pgxpool.Pool
 	JWT            *helper.JWTManager
 	Permissions    *helper.PermissionSet
+	UserService    *service.UserService
 	StudentService *service.StudentService
 	AuthService    *service.AuthService
 }
@@ -34,15 +35,44 @@ func Register(app *fiber.App, deps Dependencies) {
 	auth.Post("/logout", deps.AuthService.Logout)
 	auth.Get("/me", middleware.RequireAuth(deps.JWT), deps.AuthService.Me)
 
-	// --- Endpoint Terlindungi: Wajib Login & RBAC Terkontrol ---
+	perms := deps.Permissions
+
+	// --- Endpoint Users (Terlindungi) ---
+	users := api.Group("/users",
+		middleware.RequireJSON,
+		middleware.RequireAuth(deps.JWT),
+	)
+
+	// Hak akses diputuskan di Middleware
+	users.Get("/",
+		middleware.RequirePermission(perms, "user:list"),
+		deps.UserService.List,
+	)
+	users.Post("/",
+		middleware.RequirePermission(perms, "user:update:any"),
+		deps.UserService.Create,
+	)
+	users.Delete("/:id",
+		middleware.RequirePermission(perms, "user:delete"),
+		deps.UserService.Delete,
+	)
+	users.Patch("/:id/role",
+		middleware.RequirePermission(perms, "role:assign"),
+		deps.UserService.AssignRole,
+	)
+
+	// Hak akses bergantung kepemilikan data (Ownership -> Service)
+	users.Get("/:id", deps.UserService.Get)
+	users.Put("/:id", deps.UserService.Replace)
+	users.Patch("/:id", deps.UserService.Patch)
+
+	// --- Endpoint Students (Terlindungi) ---
 	students := api.Group("/students",
 		middleware.RequireJSON,
 		middleware.RequireAuth(deps.JWT),
 	)
 
-	perms := deps.Permissions
-
-	// Hak akses diputuskan di Middleware (Route level - tidak perlu tahu isi data)
+	// Hak akses diputuskan di Middleware
 	students.Get("/",
 		middleware.RequirePermission(perms, "student:list"),
 		deps.StudentService.List,
@@ -56,7 +86,7 @@ func Register(app *fiber.App, deps Dependencies) {
 		deps.StudentService.Delete,
 	)
 
-	// Hak akses bergantung pada Kepemilikan Data (Ownership) -> Diperiksa di Service layer
+	// Hak akses bergantung pada Kepemilikan Data (Ownership -> Service)
 	students.Get("/:id", deps.StudentService.Get)
 	students.Put("/:id", deps.StudentService.Replace)
 	students.Patch("/:id", deps.StudentService.Patch)
@@ -68,8 +98,7 @@ func healthCheck(pool *pgxpool.Pool) fiber.Handler {
 		defer cancel()
 
 		if err := pool.Ping(ctx); err != nil {
-			return helper.Fail(c, fiber.StatusServiceUnavailable,
-				"database tidak dapat dihubungi")
+			return helper.ServiceUnavailable("database tidak dapat dihubungi")
 		}
 
 		return helper.Success(c, fiber.StatusOK, "server dan database berjalan", nil)
